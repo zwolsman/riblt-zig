@@ -73,7 +73,7 @@ const MappingHeap = struct {
     }
 };
 
-fn CodingWindow(T: type, Context: type, hashFn: fn (ctx: Context, item: T) u64) type {
+pub fn CodingWindow(T: type, Context: type, hashFn: fn (ctx: Context, item: T) u64) type {
     return struct {
         const Self = @This();
 
@@ -359,8 +359,8 @@ const RandomMapping = struct {
     }
 };
 
-const Ctx = struct {};
-fn hash(ctx: Ctx, input: u64) u64 {
+const TestContext = struct {};
+fn hash(ctx: TestContext, input: u64) u64 {
     _ = ctx;
     return std.hash.Murmur2_64.hashUint64(input);
 }
@@ -368,7 +368,7 @@ fn hash(ctx: Ctx, input: u64) u64 {
 test "example" {
     const alice = [_]u64{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
     const bob = [_]u64{ 1, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
-    const Window = CodingWindow(u64, Ctx, hash);
+    const Window = CodingWindow(u64, TestContext, hash);
 
     var enc = Window.init(std.testing.allocator);
     defer enc.deinit();
