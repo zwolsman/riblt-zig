@@ -365,7 +365,7 @@ fn hash(ctx: Ctx, input: u64) u64 {
     return std.hash.Murmur2_64.hashUint64(input);
 }
 
-test "example test" {
+test "example" {
     const alice = [_]u64{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
     const bob = [_]u64{ 1, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
     const Window = CodingWindow(u64, Ctx, hash);
