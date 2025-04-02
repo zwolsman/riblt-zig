@@ -15,12 +15,11 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib_mod = b.addModule(.{
+    const lib_mod = b.addModule("riblt", .{
         // `root_source_file` is the Zig "entry point" of the module. If a module
         // only contains e.g. external object files, you can make this `null`.
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
-        .name = "riblt",
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
