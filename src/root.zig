@@ -6,74 +6,12 @@ const Direction = enum {
     remove,
 };
 
-const MappingHeap = struct {
-    const Self = @This();
-
-    const SymbolMapping = struct {
-        source_idx: usize,
-        coded_idx: usize,
-    };
-
-    queue: std.ArrayList(SymbolMapping),
-
-    fn init(allocator: std.mem.Allocator) Self {
-        return .{ .queue = .init(allocator) };
-    }
-
-    fn deinit(self: *Self) void {
-        self.queue.deinit();
-    }
-
-    fn append(self: *Self, item: SymbolMapping) !void {
-        try self.queue.append(item);
-        self.fixTail();
-    }
-
-    fn fixTail(self: *Self) void {
-        var curr = self.queue.items.len - 1;
-
-        while (true) {
-            const parent = if (curr == 0) 0 else (curr - 1) / 2;
-            if (curr == parent or self.queue.items[parent].coded_idx <= self.queue.items[curr].coded_idx) {
-                break;
-            }
-
-            self.swap(curr, parent);
-            curr = parent;
-        }
-    }
-
-    fn fixHead(self: *Self) void {
-        var curr: usize = 0;
-        while (true) {
-            var child: usize = curr * 2 + 1;
-            if (child >= self.queue.items.len) {
-                // No left child
-                break;
-            }
-
-            // Check for right child
-            if (child + 1 < self.queue.items.len and self.queue.items[child + 1].coded_idx < self.queue.items[child].coded_idx) {
-                child += 1; // Move to the right child
-            }
-
-            if (self.queue.items[curr].coded_idx <= self.queue.items[child].coded_idx) {
-                break;
-            }
-
-            self.swap(curr, child);
-            curr = child;
-        }
-    }
-
-    fn swap(self: *Self, x: usize, y: usize) void {
-        const temp = self.queue.items[x];
-        self.queue.items[x] = self.queue.items[y];
-        self.queue.items[y] = temp;
-    }
+const SymbolMapping = struct {
+    source_idx: usize,
+    coded_idx: usize,
 };
 
-pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: fn (ctx: Context, item: T) u64) type {
+pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: fn (context: Context, item: T) u64) type {
     return struct {
         const Self = @This();
 
@@ -133,7 +71,7 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
                 return self.decoded == self.cs.items.len;
             }
 
-            pub fn addCodedSymbol(self: *Decoder, sym: CodedSymbol(T)) !void {
+            pub fn addCodedSymbol(self: *Decoder, context: Context, sym: CodedSymbol(T)) !void {
                 // scan through decoded symbols to peel off matching ones
                 var next_sym = self.window.applyWindow(sym, .remove);
                 next_sym = self.remote.applyWindow(next_sym, .remove);
@@ -143,7 +81,7 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
                 try self.cs.append(next_sym);
 
                 // check if the coded symbol is decodable, and insert into decodable list if so
-                if ((next_sym.count == 1 or next_sym.count == -1) and (next_sym.hash == hashFn(.{}, next_sym.symbol))) {
+                if ((next_sym.count == 1 or next_sym.count == -1) and (next_sym.hash == hashFn(context, next_sym.symbol))) {
                     try self.decodable.append(self.cs.items.len - 1);
                 }
 
@@ -152,7 +90,7 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
                 }
             }
 
-            fn applyNewSymbol(self: *Decoder, sym: HashedSymbol(T), direction: Direction) !RandomMapping {
+            fn applyNewSymbol(self: *Decoder, context: Context, sym: HashedSymbol(T), direction: Direction) !RandomMapping {
                 var m = RandomMapping{
                     .prng = sym.hash,
                     .last_idx = 0,
@@ -184,7 +122,7 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
                     // state once.
 
                     if ((self.cs.items[cidx].count == -1 or self.cs.items[cidx].count == 1) and
-                        self.cs.items[cidx].hash == hashFn(.{}, self.cs.items[cidx].symbol))
+                        self.cs.items[cidx].hash == hashFn(context, self.cs.items[cidx].symbol))
                     {
                         try self.decodable.append(cidx);
                     }
@@ -194,7 +132,7 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
                 return m;
             }
 
-            pub fn tryDecode(self: *Decoder) !void {
+            pub fn tryDecode(self: *Decoder, context: Context) !void {
                 var didx: usize = 0;
                 while (didx < self.decodable.items.len) {
                     const cidx = self.decodable.items[didx];
@@ -206,7 +144,7 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
                                 .hash = cs.hash,
                             };
 
-                            const m = try self.applyNewSymbol(new_sym, .remove);
+                            const m = try self.applyNewSymbol(context, new_sym, .remove);
 
                             try self.remote.addHashedSymbolWithMapping(new_sym, m);
                         },
@@ -216,7 +154,7 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
                                 .hash = cs.hash,
                             };
 
-                            const m = try self.applyNewSymbol(new_sym, .add);
+                            const m = try self.applyNewSymbol(context, new_sym, .add);
                             try self.local.addHashedSymbolWithMapping(new_sym, m);
                         },
                         0 => {},
@@ -234,7 +172,7 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
         allocator: std.mem.Allocator,
         symbols: std.ArrayList(HashedSymbol(T)),
         mappings: std.ArrayList(RandomMapping),
-        queue: MappingHeap,
+        queue: std.PriorityQueue(SymbolMapping, void, lessThan),
         next_idx: usize,
 
         pub fn init(allocator: std.mem.Allocator) Self {
@@ -242,7 +180,7 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
                 .allocator = allocator,
                 .symbols = .init(allocator),
                 .mappings = .init(allocator),
-                .queue = .init(allocator),
+                .queue = .init(allocator, {}),
                 .next_idx = 0,
             };
         }
@@ -251,6 +189,11 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
             self.queue.deinit();
             self.symbols.deinit();
             self.mappings.deinit();
+        }
+
+        fn lessThan(context: void, a: SymbolMapping, b: SymbolMapping) std.math.Order {
+            _ = context;
+            return std.math.order(a.coded_idx, b.coded_idx);
         }
 
         /// inserts a symbol to the CodingWindow
@@ -272,7 +215,7 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
         fn addHashedSymbolWithMapping(self: *Self, t: HashedSymbol(T), m: RandomMapping) !void {
             try self.symbols.append(t);
             try self.mappings.append(m);
-            try self.queue.append(.{ .source_idx = self.symbols.items.len - 1, .coded_idx = m.last_idx });
+            try self.queue.add(.{ .source_idx = self.symbols.items.len - 1, .coded_idx = m.last_idx });
         }
 
         /// maps the source symbols to the next coded symbol they should be
@@ -280,20 +223,22 @@ pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: f
         /// of cw should be modified.
         fn applyWindow(self: *Self, cs: CodedSymbol(T), direction: Direction) CodedSymbol(T) {
             var next_cs = cs;
-            if (self.queue.queue.items.len == 0) {
+            if (self.queue.count() == 0) {
                 self.next_idx += 1;
                 return next_cs;
             }
 
-            // TODO apply window is not working as expected..
+            while (self.queue.peek()) |head| {
+                if (head.coded_idx != self.next_idx)
+                    break;
 
-            while (self.queue.queue.items[0].coded_idx == self.next_idx) {
-                next_cs = next_cs.apply(self.symbols.items[self.queue.queue.items[0].source_idx], direction);
+                next_cs = next_cs.apply(self.symbols.items[head.source_idx], direction);
 
-                // Generate the next mapping
-                const next_map = self.mappings.items[self.queue.queue.items[0].source_idx].nextIndex();
-                self.queue.queue.items[0].coded_idx = next_map;
-                self.queue.fixHead();
+                const next_map = self.mappings.items[head.source_idx].nextIndex();
+                var copy = head;
+                copy.coded_idx = next_map;
+
+                self.queue.update(head, copy) catch unreachable;
             }
 
             self.next_idx += 1;
@@ -359,8 +304,7 @@ const RandomMapping = struct {
     }
 };
 
-const TestContext = struct {};
-fn hash(ctx: TestContext, input: u64) u64 {
+fn hash(ctx: void, input: u64) u64 {
     _ = ctx;
     return std.hash.Murmur2_64.hashUint64(input);
 }
@@ -368,18 +312,18 @@ fn hash(ctx: TestContext, input: u64) u64 {
 test "example" {
     const alice = [_]u64{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
     const bob = [_]u64{ 1, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
-    const Window = CodingWindow(u64, TestContext, hash);
+    const Window = CodingWindow(u64, void, hash);
 
     var enc = Window.init(std.testing.allocator);
     defer enc.deinit();
     for (alice) |item| {
-        try enc.addSymbol(.{}, item);
+        try enc.addSymbol({}, item);
     }
 
     var dec = Window.init(std.testing.allocator);
     defer dec.deinit();
     for (bob) |item| {
-        try dec.addSymbol(.{}, item);
+        try dec.addSymbol({}, item);
     }
 
     var cost: u32 = 0;
@@ -392,8 +336,8 @@ test "example" {
         cost += 1;
 
         const s = encoder.produceNextCodedSymbol();
-        try decoder.addCodedSymbol(s);
-        try decoder.tryDecode();
+        try decoder.addCodedSymbol({}, s);
+        try decoder.tryDecode({});
 
         if (decoder.isDecoded()) {
             break;
