@@ -80,7 +80,7 @@ pub fn CodingWindow(T: type, Context: type, hashFn: fn (ctx: Context, item: T) u
         const Encoder = struct {
             window: *Self,
 
-            fn produceNextCodedSymbol(self: Encoder) CodedSymbol(T) {
+            pub fn produceNextCodedSymbol(self: Encoder) CodedSymbol(T) {
                 const out = CodedSymbol(T){
                     .symbol = 0,
                     .hash = 0,
@@ -121,7 +121,7 @@ pub fn CodingWindow(T: type, Context: type, hashFn: fn (ctx: Context, item: T) u
                 };
             }
 
-            fn deinit(self: *Decoder) void {
+            pub fn deinit(self: *Decoder) void {
                 self.cs.deinit();
                 self.decodable.deinit();
 
@@ -129,11 +129,11 @@ pub fn CodingWindow(T: type, Context: type, hashFn: fn (ctx: Context, item: T) u
                 self.remote.deinit();
             }
 
-            fn isDecoded(self: *Decoder) bool {
+            pub fn isDecoded(self: *Decoder) bool {
                 return self.decoded == self.cs.items.len;
             }
 
-            fn addCodedSymbol(self: *Decoder, sym: CodedSymbol(T)) !void {
+            pub fn addCodedSymbol(self: *Decoder, sym: CodedSymbol(T)) !void {
                 // scan through decoded symbols to peel off matching ones
                 var next_sym = self.window.applyWindow(sym, .remove);
                 next_sym = self.remote.applyWindow(next_sym, .remove);
@@ -194,7 +194,7 @@ pub fn CodingWindow(T: type, Context: type, hashFn: fn (ctx: Context, item: T) u
                 return m;
             }
 
-            fn tryDecode(self: *Decoder) !void {
+            pub fn tryDecode(self: *Decoder) !void {
                 var didx: usize = 0;
                 while (didx < self.decodable.items.len) {
                     const cidx = self.decodable.items[didx];
@@ -237,7 +237,7 @@ pub fn CodingWindow(T: type, Context: type, hashFn: fn (ctx: Context, item: T) u
         queue: MappingHeap,
         next_idx: usize,
 
-        fn init(allocator: std.mem.Allocator) Self {
+        pub fn init(allocator: std.mem.Allocator) Self {
             return .{
                 .allocator = allocator,
                 .symbols = .init(allocator),
@@ -247,14 +247,14 @@ pub fn CodingWindow(T: type, Context: type, hashFn: fn (ctx: Context, item: T) u
             };
         }
 
-        fn deinit(self: *Self) void {
+        pub fn deinit(self: *Self) void {
             self.queue.deinit();
             self.symbols.deinit();
             self.mappings.deinit();
         }
 
         /// inserts a symbol to the CodingWindow
-        fn addSymbol(self: *Self, ctx: Context, t: T) !void {
+        pub fn addSymbol(self: *Self, ctx: Context, t: T) !void {
             const hashed_symbol = HashedSymbol(T){
                 .symbol = t,
                 .hash = hashFn(ctx, t),
@@ -300,13 +300,13 @@ pub fn CodingWindow(T: type, Context: type, hashFn: fn (ctx: Context, item: T) u
             return next_cs;
         }
 
-        fn encoder(self: *Self) Encoder {
+        pub fn encoder(self: *Self) Encoder {
             return .{
                 .window = self,
             };
         }
 
-        fn decoder(self: *Self) Decoder {
+        pub fn decoder(self: *Self) Decoder {
             return Decoder.init(self.allocator, self);
         }
     };
@@ -319,13 +319,13 @@ fn HashedSymbol(T: type) type {
     };
 }
 
-fn CodedSymbol(T: type) type {
+pub fn CodedSymbol(T: type) type {
     return struct {
         symbol: T,
         hash: u64,
         count: i64,
 
-        pub fn apply(self: CodedSymbol(T), s: HashedSymbol(T), direction: Direction) CodedSymbol(T) {
+        fn apply(self: CodedSymbol(T), s: HashedSymbol(T), direction: Direction) CodedSymbol(T) {
             return .{
                 .symbol = self.symbol ^ s.symbol,
                 .hash = self.hash ^ s.hash,
