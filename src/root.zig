@@ -73,7 +73,7 @@ const MappingHeap = struct {
     }
 };
 
-pub fn CodingWindow(T: type, Context: type, hashFn: fn (ctx: Context, item: T) u64) type {
+pub fn CodingWindow(comptime T: type, comptime Context: type, comptime hashFn: fn (ctx: Context, item: T) u64) type {
     return struct {
         const Self = @This();
 
